@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+
+# Copyright 2020 Carl Winbäck. See the COPYING file at the top-level
+# directory of this distribution.
+
+from collections import namedtuple
+from datetime import datetime,timezone
+from jinja2 import Environment, FileSystemLoader
+import os
+
+
+def get_ciphers():
+    cipher_list = ""
+    with open('./data/ciphers.txt', 'r') as f:
+        cipher_list = ':'.join(line.strip() for line in f)
+    return cipher_list
+
+
+def get_config(config_file):
+    result = []
+    Site = namedtuple('Site',
+                      'short_name sitetype primary_hostname alt_hostname')
+
+    with open(config_file, 'r') as f:
+        for line in f.read().splitlines():
+            clean_line = ''.join(line.split())
+            sitetype = 'php' if '+' in clean_line else 'static'
+            base_data = clean_line.replace('+', ':').split(':')
+            hostnames = base_data[1].split('/')
+            short_name = base_data[0]
+            primary_hostname = hostnames[0]
+            alt_hostname = hostnames[1]
+            s = Site(short_name, sitetype, primary_hostname, alt_hostname)
+            result.append(s)
+
+    return result
+
+
+def main():
+    root = os.path.dirname(os.path.abspath(__file__))
+    templates_dir = os.path.join(root, 'templates')
+    env = Environment(loader=FileSystemLoader(templates_dir))
+    template = env.get_template('nginx.j2')
+    print(template.render(
+        sites = get_config('./config'),
+        timestamp = datetime.now(timezone.utc),
+        ciphers = get_ciphers()
+    ))
+
+
+if __name__ == '__main__':
+    main()

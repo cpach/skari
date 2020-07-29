@@ -1,0 +1,92 @@
+{# Copyright 2020 Carl Winbäck.
+   See the COPYING file at the top-level directory of this distribution. #}
+### Config generated: {{timestamp}}
+
+user www-data www-data;
+
+worker_processes auto;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    log_format my_logformat '$remote_addr - $remote_user [$time_iso8601] '
+                            '"$host" "$request" $status $body_bytes_sent '
+                            '"$http_referer" "$http_user_agent" '
+                            '$request_time';
+
+    upstream letsencrypt {
+        server 127.0.0.1:8888;
+    }
+    {% for s in sites %}
+    ### BEGIN CONFIGURATION FOR {{s.primary_hostname.upper()}} / {{s.alt_hostname.upper()}} ###
+
+    server {
+        listen 80;
+        server_name {{s.primary_hostname}} {{s.alt_hostname}};
+
+        location / {
+            return 301 https://{{s.primary_hostname}}$request_uri;
+        }
+
+        location /.well-known/acme-challenge {
+            proxy_pass http://letsencrypt;
+        }
+    }
+    {% set tls_config %}
+        ssl_certificate     /srv/pki/tls/certs/{{s.short_name}}-pub.pem;
+        ssl_certificate_key /srv/pki/tls/private/{{s.short_name}}-private.pem;
+        ssl_dhparam         /usr/lib/python3/dist-packages/certbot/ssl-dhparams.pem;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        ssl_protocols TLSv1.2 TLSv1.3;
+
+        ssl_ciphers {{ciphers}};
+
+        ssl_prefer_server_ciphers off;
+    {% endset %}
+    server {
+        listen 443 ssl http2;
+        server_name {{s.alt_hostname}};
+        {{tls_config}}
+        return 301 https://{{s.primary_hostname}}$request_uri;
+    }
+    {% if s.sitetype != 'php' %}
+    server {
+        listen 443 ssl http2;
+        server_name {{s.primary_hostname}};
+        {{tls_config}}
+        root /srv/sites/{{s.short_name}};
+    }
+    {% else %}
+    server {
+        listen 443 ssl http2;
+        server_name {{s.primary_hostname}};
+        {{tls_config}}
+        root /srv/sites/{{s.short_name}};
+
+        index index.html index.php;
+        client_max_body_size 100M;
+
+        location / {
+            try_files $uri $uri/ =404;
+        }
+
+        location ~ \.php$ {
+            include /etc/nginx/snippets/fastcgi-php.conf;
+            fastcgi_pass unix:/var/run/php/php7.4-fpm.sock;
+        }
+
+        location ~ /\.ht {
+            deny all;
+        }
+
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico)$ {
+                expires max;
+                log_not_found off;
+        }
+    }
+    {% endif %}
+    ### END CONFIGURATION FOR {{s.primary_hostname.upper()}} / {{s.alt_hostname.upper()}} ###
+    {% endfor %}
+}
