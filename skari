@@ -3,10 +3,31 @@
 # Copyright 2020 Carl Winbäck. See the COPYING file at the top-level
 # directory of this distribution.
 
+
+from argparse import ArgumentParser
 from collections import namedtuple
 from datetime import datetime,timezone
 from jinja2 import Environment, FileSystemLoader
 import os
+import sys
+
+
+def check_arg(args=None):
+    p = ArgumentParser()
+
+    p.add_argument('-s',
+                   '--site-definitions',
+                   help='path to file containing the site definitions',
+                   required='True')
+    p.add_argument('-t',
+                   '--template',
+                   help='path to file containing the configuration template',
+                   required='True')
+
+    results = p.parse_args(args)
+
+    return (results.site_definitions,
+            results.template)
 
 
 def get_ciphers():
@@ -37,12 +58,12 @@ def get_config(config_file):
 
 
 def main():
-    root = os.path.dirname(os.path.abspath(__file__))
-    templates_dir = os.path.join(root, 'templates')
-    env = Environment(loader=FileSystemLoader(templates_dir))
+    sites_path, template_path = check_arg(sys.argv[1:])
+    template_dir = os.path.dirname(template_path)
+    env = Environment(loader=FileSystemLoader(template_dir))
     template = env.get_template('nginx.j2')
     print(template.render(
-        sites = get_config('./config'),
+        sites = get_config(sites_path),
         timestamp = datetime.now(timezone.utc),
         ciphers = get_ciphers()
     ))
